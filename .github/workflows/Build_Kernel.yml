@@ -1,0 +1,302 @@
+name: Build Kernel
+on:
+  workflow_dispatch:
+    inputs:
+      FEIL:
+        description: "手机型号"
+        required: true
+        type: choice
+        options:
+          - 'example'
+          - 'oneplus_ace2v_v'
+
+        default: 'oneplus_ace2v_v'
+        
+      KERNEL_VERSION:
+        description: "内核版本"
+        required: true
+        type: choice
+        options:
+          - 'bar'
+          - '5.10'
+        default: '5.10'
+       
+      bbr:
+        description: "是否启用BBR算法"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'On'
+
+      ipset:
+        description: "是否添加 IPSet"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'Off'
+
+      UNICODE_BYPASS:
+        description: "是否添加Unicode零宽绕过修复补丁(不推荐开启)"
+        required: true
+        type: choice
+        options:
+          - 'On'
+          - 'Off'
+        default: 'Off'
+
+jobs:
+  build:
+    name: For ${{ github.event.inputs.FEIL }}}
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+      CCACHE_MAXSIZE: 8G
+      
+    steps:
+      - name: "Maximize Build Space | 最大化构建空间"
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 4096
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: "Checkout Builder | 检出构建脚本"
+        uses: actions/checkout@v4
+
+      - name: "Setup Cache Env | 设置缓存环境"
+        run: |
+          echo "正在设置机型隔离缓存目录..."
+          echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel" >> $GITHUB_ENV
+          mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel"
+          echo "缓存目录已设置: $HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel"
+
+      - name: "Configure Git | 配置Git账户"
+        run: |
+          echo "正在配置Git用户信息..."
+          git config --global user.name "root"
+          git config --global user.email "root@localhost"
+          echo "Git配置完成"
+
+      - name: "Cache & Install Dependencies | 缓存 & 安装构建依赖"
+        uses: awalsh128/cache-apt-pkgs-action@latest 
+        with: 
+          packages: python3 git curl ccache libelf-dev build-essential flex bison libssl-dev libncurses-dev liblz4-tool zlib1g-dev libxml2-utils rsync unzip gawk dos2unix
+          execute_install_scripts: true
+
+      - name: "Restore ccache | 恢复ccache缓存"
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.inputs.FEIL }}-Kernel
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-Kernel
+            ccache-${{ runner.os }}-Kernel
+
+      - name: "Initialize ccache | 初始化ccache"
+        run: |
+          echo "正在初始化ccache..."
+          INIT_FLAG="${{ env.CCACHE_DIR }}/.ccache_initialized"
+          
+          if command -v ccache >/dev/null 2>&1; then
+            if [ ! -f "$INIT_FLAG" ]; then
+              mkdir -p "${{ env.CCACHE_DIR }}"
+              ccache -M ${{ env.CCACHE_MAXSIZE }}
+              touch "$INIT_FLAG"
+              echo "ccache初始化完成"
+            else
+              echo "ccache已存在，跳过初始化"
+            fi
+          else
+            echo "未找到ccache命令，跳过初始化"
+          fi
+          # 显示缓存统计
+          ccache -s
+          echo "ccache初始化流程完成"
+
+      - name: "Install Repo Tool | 安装Repo工具"
+        run: |
+          echo "正在下载repo工具..."
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+          chmod a+x ~/repo
+          sudo mv ~/repo /usr/local/bin/repo
+          echo "repo工具安装完成"
+
+      - name: "Clone Kernel Source | 克隆内核源码"
+        run: |
+          echo "正在初始化内核仓库..."
+          mkdir kernel_workspace && cd kernel_workspace
+         
+          repo init -u https://github.com/1q23lyc45/Ace2V-GKI-Actions.git -b refs/heads/master -m ${{ github.event.inputs.FEIL }}.xml --depth=1
+
+          echo "同步代码库(使用$(nproc --all)线程)..."
+          repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
+          
+          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          rm -rf kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          echo "内核配置完成"
+
+      - name: "Merge Oplus Config | 合并厂商机型配置文件"
+        run: |
+          echo "正在合并 oplus6983 专属内核配置..."
+          realpath .
+          cd kernel_workspace/kernel_platform/common
+          realpath .
+          ls -al . .. ../..
+          # 1. 定义文件路径变量
+          ROOT_DIR="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          KERNEL_DIR="common"
+          DEFCONFIG="oplus6983_defconfig"
+
+          # 2. 调用内核自带的 merge_config.sh 脚本进行三方合并
+          KCONFIG_CONFIG="${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}" \
+          bash "${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh" \
+            -m -r \
+            "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/gki_defconfig" \
+            "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/mgk_64_k510_defconfig" \
+            "${ROOT_DIR}/${KERNEL_DIR}/kernel/configs/oplus6983.config"
+
+          echo "合并完成，正在用生成的厂商配置替换默认的 gki_defconfig..."
+          # 3. 用合并出来的高集成度配置覆盖掉 gki_defconfig，确保后续所有针对 gki_defconfig 的操作直接作用于 oplus6983 配置
+          cp "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}" \
+             "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/gki_defconfig"
+
+          # 4. 清理临时生成的配置文件
+          rm -f "${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/${DEFCONFIG}"
+          
+          echo "厂商配置替换与应用成功！"
+
+      - name: "Setup SecFix | 应用漏洞补丁"
+        run: |
+          cd kernel_workspace/kernel_platform
+          echo "应用补丁..."
+          cd ./common
+          echo "正在应用 CVE-2026-43499 rtmutex 修复补丁..."
+          patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-43499.diff" || exit 1
+          patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-53163.diff" || exit 1
+
+          if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
+            echo "正在应用Unicode零宽绕过修复补丁..."
+            patch -p1 << "$GITHUB_WORKSPACE/security_patch/unicode_bypass_fix510.patch" || exit 1
+          fi
+          echo "所有补丁应用完成"
+
+
+      - name: "Configure Kernel Options | 配置内核选项"
+        run: |
+          echo "正在配置内核编译选项..."
+          
+          cd kernel_workspace/kernel_platform
+
+          echo "tmpfs 优化"
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          
+          echo "启用BBR网络算法..."
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+          
+
+          if [ "${{ github.event.inputs.ipset }}" == "On" ]; then
+            echo "加入 IPSet 增强及相关内核配置..."
+            echo "CONFIG_IP_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_MAX=65534" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IPMARK=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IPPORTIP=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IPPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_IPMAC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_MAC=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NETPORTNET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NETNET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NETPORT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_HASH_NETIFACE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_SET_LIST_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_SET=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_TARGET_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NETFILTER_XT_MATCH_RECENT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_NAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_ACT_CONNMARK=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
+          
+          echo "正在配置 lto ..."
+          DEFCONFIG=./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/^CONFIG_LTO=n/CONFIG_LTO=y/' "$DEFCONFIG"
+          sed -i 's/^CONFIG_LTO_CLANG_FULL=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
+          sed -i 's/^CONFIG_LTO_CLANG_NONE=y/CONFIG_LTO_CLANG_THIN=y/' "$DEFCONFIG"
+          grep -q '^CONFIG_LTO_CLANG_THIN=y' "$DEFCONFIG" || echo 'CONFIG_LTO_CLANG_THIN=y' >> "$DEFCONFIG"
+
+          # 跳过将uapi标准头安装到 usr/include 目录的不必要操作，节省编译时间
+          echo "CONFIG_HEADERS_INSTALL=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+          echo "Remove check_defconfig"
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          echo "内核配置更新完成"
+          
+      - name: "Build Kernel | 编译内核"
+        run: |
+          echo "开始内核编译..."
+
+          export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts-master/clang/host/linux-x86/clang-r416183b/bin:$PATH"
+          export PATH="/usr/lib/ccache:$PATH"
+          sudo apt install libelf-dev
+          cd kernel_workspace/kernel_platform/common
+          make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig Image.gz
+          
+          ccache -s
+          echo "内核编译完成"
+          
+      - name: "Package Kernel | 打包内核"
+        run: |
+          echo "准备AnyKernel3打包环境..."
+          git clone https://github.com/1q23lyc45/AnyKernel3 --depth=1
+          rm -rf ./AnyKernel3/.git
+          mkdir -p kernel_workspace/kernel_platform/out/Final-Image-Find/
+          dir1=""
+          dir2=""
+          image_path=$(find "./kernel_workspace/kernel_platform/common/out/" -name "Image" | head -n 1)
+          if [ -n "$image_path" ]; then
+            dir1=$(dirname "$image_path")/
+            echo "成功找到 Image 文件"
+          fi
+          if [ -n "$image_path" ] && [ -f "$image_path" ]; then
+            echo "Image file finally located at: $image_path"
+            cp "$image_path" ./AnyKernel3/Image
+            cp "$image_path" kernel_workspace/kernel_platform/out/Final-Image-Find/Image
+          fi
+
+      - name: "Set Artifact Name | 设置产物名称"
+        id: set_name
+        run: |
+          echo
+          echo "ARTIFACT_NAME=Anykernel3_${{ github.event.inputs.FEIL }}_Kernel_Only" >> $GITHUB_OUTPUT
+
+
+      - name: "Upload AnyKernel3 | 上传 AnyKernel3"
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.set_name.outputs.ARTIFACT_NAME }}
+          path: ./AnyKernel3/*
+         
