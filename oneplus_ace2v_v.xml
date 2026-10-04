@@ -2,7 +2,7 @@
 <manifest>
   <remote fetch="https://git.codelinaro.org/clo/la" name="clo" review="codelinaro.org"/>
   <default remote="clo" revision="kernel.build.lnx.1.0" sync-j="8"/>
-  <remote fetch="https://github.com/lineageos-on-vitamin" name="origin"/>
+  <remote fetch="https://github.com/1q23lyc45" name="origin"/>
   <project remote="origin" name="android_kernel_oneplus_mt6983" path="kernel-5.10" revision="lineage-22.2">
     <linkfile dest="kernel_platform/common" src="."/>
   </project>

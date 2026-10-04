@@ -161,9 +161,9 @@ jobs:
           cd kernel_workspace/kernel_platform
           echo "应用补丁..."
           cd ./common
-          echo "正在应用 CVE-2026-43499 rtmutex 修复补丁..."
-          patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-43499.diff" || exit 1
-          patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-53163.diff" || exit 1
+          #echo "正在应用 CVE-2026-43499 rtmutex 修复补丁..."
+          #patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-64560-wrapper.linux-cleanup.h.diff" || exit 1
+          #patch -p1 < "$GITHUB_WORKSPACE/security_patch/CVE-2026-53163.diff" || exit 1
 
           if [ "${{ github.event.inputs.UNICODE_BYPASS }}" = "On" ]; then
             echo "正在应用Unicode零宽绕过修复补丁..."
