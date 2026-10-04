@@ -190,6 +190,8 @@ jobs:
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           
+          echo "修复 VHE 虚拟化支持..."
+          sed -i 's/[[:space:]]*kvm-arm\.mode=protected//g' ./common/arch/arm64/configs/gki_defconfig
 
           if [ "${{ github.event.inputs.ipset }}" == "On" ]; then
             echo "加入 IPSet 增强及相关内核配置..."

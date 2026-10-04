@@ -6,6 +6,24 @@
 
 ⚠️ **警告**：本内核仅支持 Ace 2V / Nord 3 的 AOSP 15 类原生系统（如 LineageOS 22），绝对不支持官方 ColorOS / OxygenOS 系统！请在刷入前务必核对好您的系统环境，切勿在官方系统上盲目尝试！
 
+## 获取与安装方法
+
+### 1. 下载现成内核
+您可以直接前往本仓库的 **[Releases](../../releases)** 页面下载打包好的 AnyKernel3 压缩包。
+
+### 2. 自行构建内核
+如果您希望自定义配置并自行编译：
+1. **Fork 仓库**：请先点击页面右上角的 **Fork** 按钮，将本仓库复制到您自己的 GitHub 账号下。
+2. **触发构建**：前往您 Fork 后的仓库 **[Actions](../../actions)** 页面手动触发编译工作流。
+3. **获取产物**：待构建完成后，在对应的任务详情页面下载生成的 AnyKernel3 压缩包。
+
+### 3. 刷入内核
+下载好 AnyKernel3 压缩包后，您可以通过以下任意一种方式进行刷入：
+- 使用 [KernelFlasher](https://github.com/fatalcoder524/KernelFlasher/releases) 在系统中直接刷入安装。
+- 使用第三方 Recovery（如 **TWRP**、**CWM**、**OrangeFox** 等）刷入安装。
+
+---
+
 ## 核心特性与架构：
 
 - **内核安全加固**
@@ -29,10 +47,7 @@
   - `CONFIG_TMPFS_XATTR=y`：启用 TMPFS 扩展属性支持，允许在内存文件系统中设置用户与安全扩展属性，通常用于容器化环境（如 Docker）或高级权限管理需求。
   - `CONFIG_TMPFS_POSIX_ACL=y`：启用 TMPFS 的 POSIX 访问控制列表支持，允许对内存文件系统进行更细粒度的权限控制。
 - **IPSet 增强**（可选，通过工作流输入开启）：
-  - 核心框架及最大集合：`CONFIG_IP_SET=y`、`CONFIG_IP_SET_MAX=65534`。
-  - 各种 Hash 与 Bitmap 集合类型：`CONFIG_IP_SET_BITMAP_IP=y`、`CONFIG_IP_SET_BITMAP_IPMAC=y`、`CONFIG_IP_SET_BITMAP_PORT=y`、`CONFIG_IP_SET_HASH_IP=y`、`CONFIG_IP_SET_HASH_IPMARK=y`、`CONFIG_IP_SET_HASH_IPPORT=y`、`CONFIG_IP_SET_HASH_IPPORTIP=y`、`CONFIG_IP_SET_HASH_IPPORTNET=y`、`CONFIG_IP_SET_HASH_IPMAC=y`、`CONFIG_IP_SET_HASH_MAC=y`、`CONFIG_IP_SET_HASH_NETPORTNET=y`、`CONFIG_IP_SET_HASH_NET=y`、`CONFIG_IP_SET_HASH_NETNET=y`、`CONFIG_IP_SET_HASH_NETPORT=y`、`CONFIG_IP_SET_HASH_NETIFACE=y`、`CONFIG_IP_SET_LIST_SET=y`。用于支持复杂的 IP、端口、MAC 及网段哈希/位图集合，常用于高级防火墙或分流代理。
-  - Netfilter 匹配与目标动作：`CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y`、`CONFIG_NETFILTER_XT_SET=y`、`CONFIG_NETFILTER_XT_TARGET_LOG=y`、`CONFIG_NETFILTER_XT_MATCH_RECENT=y`、`CONFIG_NET_ACT_CONNMARK=y`。提供地址类型匹配、IPSet 动作关联、日志记录、Recent 报文匹配及连接标记等增强网络过滤功能。
-  - IPv6 NAT 及 TTL/HL 调整：`CONFIG_IP6_NF_NAT=y`、`CONFIG_IP6_NF_TARGET_MASQUERADE=y`、`CONFIG_IP_NF_TARGET_TTL=y`、`CONFIG_IP6_NF_TARGET_HL=y`、`CONFIG_IP6_NF_MATCH_HL=y`。用于支持 IPv6 网络地址转换、伪装出口、IPv4 TTL 及 IPv6 跳数（Hop Limit）修改，适用于网络共享与策略路由优化。
+  - 启用了大部分常用的内核 IPSet 核心框架、常见的 Hash 与 Bitmap 集合类型（如 IP、端口、MAC 及网段等）、Netfilter 匹配与目标动作（如 `CONFIG_NETFILTER_XT_SET` 等），以及 IPv6 NAT 及 TTL/HL 调整支持。用于支持复杂的防火墙规则、分流代理及网络策略路由优化。
 
 ---
 
