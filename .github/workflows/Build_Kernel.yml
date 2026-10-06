@@ -196,6 +196,7 @@ jobs:
           echo "彻底禁用 SELinux DEVELOP 模式"
           sed -i '/CONFIG_SECURITY_SELINUX_DEVELOP/d' ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_SECURITY_SELINUX_DEVELOP=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_SECURITY_DMESG_RESTRICT=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           if [ "${{ github.event.inputs.ipset }}" == "On" ]; then
             echo "加入 IPSet 增强及相关内核配置..."
