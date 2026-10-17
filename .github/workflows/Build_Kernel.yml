@@ -2,16 +2,6 @@ name: Build Kernel
 on:
   workflow_dispatch:
     inputs:
-      FEIL:
-        description: "手机型号"
-        required: true
-        type: choice
-        options:
-          - 'example'
-          - 'oneplus_ace2v_v'
-
-        default: 'oneplus_ace2v_v'
-
       ipset:
         description: "是否添加 IPSet"
         required: true
@@ -32,9 +22,10 @@ on:
 
 jobs:
   build:
-    name: For ${{ github.event.inputs.FEIL }}
+    name: build
     runs-on: ubuntu-latest
     env:
+      FEIL: 'oneplus_ace2v_v'
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
@@ -57,9 +48,9 @@ jobs:
       - name: "Setup Cache Env | 设置缓存环境"
         run: |
           echo "正在设置机型隔离缓存目录..."
-          echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel" >> $GITHUB_ENV
-          mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel"
-          echo "缓存目录已设置: $HOME/.ccache_${{ github.event.inputs.FEIL }}_Kernel"
+          echo "CCACHE_DIR=$HOME/.ccache_${{ env.FEIL }}_Kernel" >> $GITHUB_ENV
+          mkdir -p "$HOME/.ccache_${{ env.FEIL }}_Kernel"
+          echo "缓存目录已设置: $HOME/.ccache_${{ env.FEIL }}_Kernel"
 
       - name: "Configure Git | 配置Git账户"
         run: |
@@ -78,9 +69,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.inputs.FEIL }}-Kernel
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ env.FEIL }}-Kernel
           restore-keys: |
-            ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-Kernel
+            ccache-${{ runner.os }}-${{ env.FEIL }}-Kernel
             ccache-${{ runner.os }}-Kernel
 
       - name: "Initialize ccache | 初始化ccache"
@@ -104,24 +95,15 @@ jobs:
           ccache -s
           echo "ccache初始化流程完成"
 
-      - name: "Install Repo Tool | 安装Repo工具"
-        run: |
-          echo "正在下载repo工具..."
-          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
-          chmod a+x ~/repo
-          sudo mv ~/repo /usr/local/bin/repo
-          echo "repo工具安装完成"
 
       - name: "Clone Kernel Source | 克隆内核源码"
         run: |
           echo "正在初始化内核仓库..."
           mkdir kernel_workspace && cd kernel_workspace
-         
-          repo init -u https://github.com/1q23lyc45/Ace2V-GKI-Actions.git -b refs/heads/master -m ${{ github.event.inputs.FEIL }}.xml --depth=1
 
-          echo "同步代码库(使用$(nproc --all)线程)..."
-          repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
-          
+          chmod +x ../clone_kernel.sh
+          ../clone_kernel.sh
+
           rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
           rm -rf kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
           echo "内核配置完成"
@@ -252,6 +234,8 @@ jobs:
           export PATH="/usr/lib/ccache:$PATH"
           sudo apt install libelf-dev
           cd kernel_workspace/kernel_platform/common
+          git add -A
+          git commit -m "auto-commit: remove dirty flag for build $RANDOM" || true
           make -j$(nproc --all) LLVM_IAS=1 LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig Image.gz
           
           ccache -s
@@ -280,7 +264,7 @@ jobs:
         id: set_name
         run: |
           echo
-          echo "ARTIFACT_NAME=Anykernel3_${{ github.event.inputs.FEIL }}_Kernel_Only" >> $GITHUB_OUTPUT
+          echo "ARTIFACT_NAME=Anykernel3_${{ env.FEIL }}" >> $GITHUB_OUTPUT
 
 
       - name: "Upload AnyKernel3 | 上传 AnyKernel3"
